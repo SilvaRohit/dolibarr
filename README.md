@@ -1,287 +1,74 @@
-# DOLIBARR ERP & CRM
+# Cloud ERP on Azure: Deployment, Recovery and Migration
 
-![Downloads per day](https://img.shields.io/sourceforge/dw/dolibarr.svg)
-![Docker hub pulls](https://img.shields.io/docker/pulls/dolibarr/dolibarr.svg)
-[![Minimum PHP Version](https://img.shields.io/badge/php-%3E%3D%207.2-8892BF.svg?style=flat-square)](https://php.net/)
-[![GitHub release](https://img.shields.io/github/v/release/Dolibarr/dolibarr)](https://github.com/Dolibarr/dolibarr)
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/5521/badge)](https://bestpractices.coreinfrastructure.org/projects/5521)
+**Business-focused Azure portfolio project | Dolibarr ERP and document management**
 
-Dolibarr ERP & CRM is a modern software package that helps manage your organization's activities (contacts, quotes, invoices, orders, stocks, agenda, human resources, ecm, manufacturing…).
+I deployed an open-source ERP application on Azure, recovered its data after a database container was reinitialized, and migrated the application to a managed database and persistent document storage. The project brings together ERP administration, cloud infrastructure, troubleshooting, and recovery.
 
-It's an Open-Source Software suite (written in PHP with JavaScript enhancements) designed for small, medium or large companies, foundations and freelancers.
+> **Current status:** Working portfolio lab. The application, recovered users, and documents remained accessible after restart and removal of the old database container. Production availability and capacity for 200 concurrent users have not been validated.
 
-You can freely use, study, modify or distribute it according to its license.
+## Business context
 
-You can use it as a standalone application or as a web application to access it from the Internet or from a LAN.
+An ERP system supports day-to-day business processes by bringing records and documents together. Dolibarr provides functions for areas such as customers, products, quotations, invoices, and document management. This lab used Dolibarr to explore how an ERP service could be hosted and managed on Azure.
 
-Dolibarr has a large community ready to help you, free forums and [preferred partners ready to offer commercial support should you need it](https://partners.dolibarr.org)
+For a business, losing access to ERP records or supporting documents can interrupt operations. This project focuses on reducing a specific recovery risk: keeping business data tied to the lifecycle of an application container.
 
-![ScreenShot](https://www.dolibarr.org/medias/dolibarr_screenshot1_1920x1080.jpg)
+## The challenge and my response
 
+| Challenge | What I did | Business value |
+| --- | --- | --- |
+| ERP data was no longer visible after the initial database container was reinitialized. | Recovered an existing SQL backup and documents archive, and compared selected records during the migration. | Restored access to the available backed-up data. |
+| The database and documents initially depended on container-local storage. | Moved database records to Azure MySQL and documents to a mounted Azure Files share. | Data storage no longer relies on the original database sidecar or the application container's local filesystem. |
+| The ERP application needed a controlled database connection. | Configured private network connectivity, DNS resolution, and a custom image with certificate verification. | Reduced public database exposure and added server identity verification for the tested connection. |
+| Changes needed to survive an application restart. | Checked restored users and documents after restarts and removed the old MariaDB sidecar. | Demonstrated a more maintainable lab setup across the restart scenarios tested. |
 
-## LICENSE
+The new architecture improves this specific lab setup. It does not establish a production recovery objective or guarantee against data loss.
 
-Dolibarr is released under the terms of the GNU General Public License as published by the Free Software Foundation; either Version 3 of the License, or (at your option) any later version (GPL-3+).
+## Solution overview
 
-See the [COPYING](https://github.com/Dolibarr/dolibarr/blob/develop/COPYING) file for a full copy of the license.
+```mermaid
+flowchart TB
+    User[ERP user] -->|HTTPS| Web[Dolibarr on Azure App Service]
+    DNS[Cloudflare DNS] -.->|Domain resolution| Web
+    Registry[Azure Container Registry] -.->|Managed identity image pull| Web
+    Web -->|Persistent document mount| Files[Azure Files]
+    Web -->|VNet integration and private DNS| DB[Azure MySQL Flexible Server]
+```
 
-Other licenses apply for some included dependencies. See [COPYRIGHT](https://github.com/Dolibarr/dolibarr/blob/develop/COPYRIGHT) for a full list.
+The web application uses a custom domain and HTTPS. ERP records are stored in Azure MySQL, reached through private networking. Documents are mounted from Azure Files. The storage connection was configured separately; a storage private endpoint was not verified.
 
+### How the design evolved
 
-## INSTALLING
+The first lab placed a MariaDB database sidecar beside the application on App Service. Its database files had no persistent mount. Following the recovery, the application was switched to managed MySQL and the sidecar was removed.
 
-There is a lot of different solutions to install Dolibarr.
+The original and migrated network designs, exact settings, troubleshooting, and verification steps are documented in the [technical deep-dive](doc/deployment-guide/Azure-ERP-deployment-guide.md).
 
-### Using packages 
+## Results
 
-If you have low technical skills and you're looking to install Dolibarr ERP/CRM with just a few clicks, you can use one of the packaged versions (see next chapter if you have IT knowledge):
+- Recovered a database containing **410 tables**; selected record counts matched between the local recovery database and the Azure MySQL import.
+- Confirmed private DNS resolution and network connectivity from the application environment to the managed database.
+- Tested the modified database driver's TLS verification using a valid hostname, a mismatched IP, and an untrusted CA.
+- Verified recovered users and documents after App Service restart and removal of the old MariaDB sidecar.
+- Created new database and document archives and checked archive integrity. A restore test of these newer backups is still pending.
 
-- [DoliWamp for Windows](https://wiki.dolibarr.org/index.php/Dolibarr_for_Windows_(DoliWamp))
-- [DoliDeb for Debian, Ubuntu](https://wiki.dolibarr.org/index.php/Dolibarr_for_Ubuntu_or_Debian)
-- DoliRpm for Red Hat, Fedora, openSUSE, Mandriva or Mageia
-- The Docker image (see chapter "Using Docker")
+These checks demonstrate the scenarios tested in the lab; they are not proof of production availability or 200-user capacity.
 
-Releases can be downloaded from [official website](https://www.dolibarr.org/).
+## Skills demonstrated
 
-### Using the generic step by step setup (recommended for IT users)
+**ERP and operations:** application recovery, user and document verification, backup awareness, and migration planning.
 
-You can use any web server supporting PHP (Apache, Nginx, ...) and a supported database (MariaDB, MySQL or PostgreSQL) to install the standard version:
+**Azure and security:** App Service, Azure Database for MySQL Flexible Server, Azure Files, VNet integration, Private DNS, Azure Container Registry, managed identity, HTTPS, and database TLS.
 
-- Verify that your installed PHP version is supported [see PHP support](https://wiki.dolibarr.org/index.php/Releases).
+**Troubleshooting:** diagnosing container persistence, resolving a MariaDB-to-MySQL collation incompatibility, and checking configuration against the running application.
 
-- Uncompress the downloaded .zip archive to copy the `dolibarr/htdocs` directory and all its files inside your web server root or get the files directly from GitHub (recommended if you know git as it makes it easier if you want to upgrade later):
+## Next steps
 
-  `git clone https://github.com/dolibarr/dolibarr -b x.y`     (where x.y is the main version like 9.0, 19.0, ...)
+- Test recovery from the latest backups and establish scheduled, independent document backups.
+- Review access, secret management, monitoring, alerting, and image updates.
+- Test real ERP workflows and MySQL collation behavior, then load-test representative users.
+- Design and cost a production architecture with appropriate availability and recovery targets.
 
-- Set up your web server to use `dolibarr/htdocs` as root if your web server does not already define a directory to point to.
+## Technical documentation
 
-- Create an empty `htdocs/conf/conf.php` file and set *write* permissions for your web server user (*write* permission will be removed once install is finished)
+Read the [technical deep-dive](doc/deployment-guide/Azure-ERP-deployment-guide.md) for the two architecture diagrams, implementation sequence, configuration values, migration tests, and operational limitations.
 
-- From your browser, go to the dolibarr "install/" page
-
-  The URL will depend on how your web configuration directs to your dolibarr installation. It may look like:
-
-  `http://localhost/dolibarr/htdocs/install/`
-
-  or
-
-  `http://localhost/dolibarr/install/`
-
-  or
-
-  `http://yourdolibarrvirtualhost/install/`
-
-- Follow the installer instructions
-
-### Using Docker images
-
-Dolibarr is also available as a [Docker image](https://hub.docker.com/r/dolibarr/dolibarr). Installation instructions are available [here](https://github.com/Dolibarr/dolibarr-docker).
-
-### Using Easypanel
-
-[Easypanel](https://easypanel.io) is a self-hosted Docker deployment platform, and Dolibarr has a one-click deployment template there.
-
-[![Deploy on Easypanel][easypanel-btn]][easypanel-deploy]
-
-[easypanel-btn]: https://easypanel.io/img/deploy-on-easypanel-40.svg
-[easypanel-deploy]: https://easypanel.io/templates/dolibarr
-
-### Using ready to use SaaS/Cloud offers
-
-If you lack the time to install it yourself, consider exploring commercial 'ready-to-use' Cloud offerings (refer to https://saas.dolibarr.org). Keep in mind that this third option comes with associated costs.
-
-
-## UPGRADING
-
-Dolibarr supports upgrading, usually without the need for any (commercial) support (depending on if you use any commercial extensions). It supports upgrading all the way from any version after 2.8 without breakage. This is unique in the ERP ecosystem and a benefit our users highly appreciate!
-
-Follow these step-by-step instructions to seamlessly upgrade Dolibarr to the latest version:
-
-- First, make a backup of your Dolibarr files, then see [the upgrade guide](https://wiki.dolibarr.org/index.php/Installation_-_Upgrade#Upgrade_Dolibarr)
-- Verify that your installed PHP version is supported by the new version [see PHP support](https://wiki.dolibarr.org/index.php/Releases).
-- Overwrite all old files from the 'dolibarr' directory with files provided in the new version's package.
-- On your next access, Dolibarr will redirect you to the "install/" page to follow the upgrade process.
-  If an `install.lock` file exists (which locks any other upgrade process), the application will ask you to remove the file manually (you should find the `install.lock` file in the directory used to store generated and uploaded documents; in most cases, this is the directory called "*documents*").
-
-
-## WHAT'S NEW
-
-See the [ChangeLog](https://github.com/Dolibarr/dolibarr/blob/develop/ChangeLog) file.
-
-
-## FEATURES
-
-### Main application/modules (all optional)
-
-- Third-Parties Management: Customers, Prospects (Leads) and/or Suppliers + Contacts
-- Members/Membership/Foundation management
-
- Product Management
-
-- Products and/or Services catalogue
-- Stock / Warehouse management + Inventory
-- Barcodes
-- Batches / Lots / Serials
-- Product Variants
-- Bill of Materials (BOM)
-- Manufacturing Orders (MO)
-- Workstations / Workplaces
-
- Customer/Sales Management
-
-- Customers/Prospects + Contacts management
-- Opportunities or Leads management
-- Commercial proposals management (online signing)
-- Customer Orders management
-- Contracts/Subscription management
-- Interventions management
-- Ticket System (+ Knowledge management)
-- Partnership management
-- Shipping management
-- Customer Invoices/Credit notes and payment management
-- Point of Sale (POS)
-
- Supplier/Purchase Management
-
-- Suppliers/Vendors + Contacts
-- Supplier (pricing) requests
-- Purchase Orders management
-- Delivery/Reception
-- Supplier Invoices/Credit notes and payment management
-- INCOTERMS
-
- Finance/Accounting
-
-- Invoices/Payments
-- Bank accounts management
-- Direct debit and Credit transfer management (European SEPA)
-- Accounting management
-- Donations management
-- Loan management
-- Margins
-- Reports
-
- Collaboration
-
-- Shared calendar/agenda (with `ical` and `vcal` import/export for third-party tools integration)
-- Projects & Tasks management
-- Event organization
-- Ticket System
-- Surveys
-
- HR - Human Resources Management
-
-- Employee leave management
-- Expense reports
-- Recruitment management
-- Employee/staff management
-- Timesheets
-
-### Other application/modules
-
-- Electronic Document Management (EDM)
-- Bookmarks
-- Reporting
-- Data export/import
-- Barcodes
-- LDAP connectivity
-- Click-To-Dial integration
-- Mass emailing
-- RSS integration
-- Social platforms linking
-- Payment platforms integration (PayPal, Stripe, Paybox...)
-- Email-Collector
-- AI support via API
-
-(around 100 modules available by default, 1000+ addons at the official marketplace Dolistore.com)
-
-### Other general features
-
-- Multi-Language Support (Localization in most major languages)
-- Multi-users and groups with finely-grained rights
-- Multi-Currency
-- Multi-Company (by adding an external module)
-- Very user-friendly and easy to use
-- Customizable dashboards
-- Highly customizable: enable only the modules you need, add user personalized fields, choose your skin, several menu managers (can be used by internal users as a back-office with a particular menu, or by external users as a front-office with another one)
-- APIs (REST, SOAP)
-- Code that is easy to understand, maintain and develop (PHP with no heavy framework; trigger and hook architecture)
-- Support a lot of country-specific features:
-  - Spanish Tax RE and IRPF
-  - French NPR VAT rate (VAT called "Non Perçue Récupérable" for DOM-TOM)
-  - Canadian double taxes (federal/province) and other countries using cumulative VAT
-  - Tunisian tax stamp
-  - Argentina invoice numbering using A,B,C...
-  - Greece fetch customer vat details from AADE, all invoice types, MyData(external free module)
-  - ZATCA e-invoicing QR-Code
-  - Compatible with [European directives](https://commission.europa.eu/topics/taxation_en) (2006/112/CE ... 2010/45/UE)
-  - Compatible with data privacy rules (Europe's GDPR, ...)
-  - ...
-- Flexible PDF & ODT generation for invoices, proposals, orders...
-- ...
-
-### System Environment / Requirements
-
-- PHP
-- MariaDB, MySQL or PostgreSQL
-- Compatible with all Cloud solutions that match PHP & MySQL or PostgreSQL prerequisites.
-
-See exact requirements on the [Wiki](https://wiki.dolibarr.org/index.php/Prerequisites)
-
-### Extending
-
-Dolibarr can be extended with a lot of other external applications or modules from third-party developers available at the [DoliStore](https://www.dolistore.com).
-
-
-## WHAT DOLIBARR CAN'T DO YET
-
-These are features that Dolibarr does **not** yet fully support:
-
-- Tasks dependencies in projects
-- Payroll module
-- Native embedded Webmail, but you can send email to contacts in Dolibarr with e.g. offers, invoices, etc.
-- Dolibarr can't do coffee (yet)
-
-
-## DOCUMENTATION
-
-Administrator, user, developer and translator's documentation are available along with other community resources in the [Wiki](https://wiki.dolibarr.org).
-
-
-## CONTRIBUTING AND RELEASE PROCESS
-
-This project exists thanks to all the people who contribute.
-Please read the instructions on how to contribute (report a bug/error, a feature request, send code, ...)  [Contributing](https://github.com/Dolibarr/dolibarr/blob/develop/.github/CONTRIBUTING.md)
-
-A View on Contributors:
-
-[![Dolibarr](https://opencollective.com/dolibarr/contributors.svg?width=890&button=false)](https://github.com/Dolibarr/dolibarr/graphs/contributors)
-
-The release process is described in the file dev/build/makepack-howto.md
-
-
-## CREDITS
-
-Dolibarr is the work of many contributors over the years and uses some fine PHP libraries.
-
-See [COPYRIGHT](https://github.com/Dolibarr/dolibarr/blob/develop/COPYRIGHT) file.
-
-
-## NEWS AND SOCIAL NETWORKS
-
-Follow Dolibarr project on:
-
-- [LinkedIn](https://www.linkedin.com/company/association-dolibarr)
-- [Mastodon](https://pouet.chapril.org/@dolibarr)
-- [BlueSky](https://bsky.app/profile/dolibarr.org)
-- [Threads](https://www.threads.net/@dolibarr)
-- [X](https://x.com/dolibarr)
-- [Facebook](https://www.facebook.com/dolibarr)
-- [Reddit](https://www.reddit.com/r/Dolibarr_ERP_CRM/)
-- [YouTube](https://www.youtube.com/user/DolibarrERPCRM)
-- [GitHub](https://github.com/Dolibarr/dolibarr)
-
-
-## Sponsors
-
-Support this project by becoming a sponsor. Your logo will show up here. 🙏 [Become a sponsor/backer](https://opencollective.com/dolibarr#backer)]
+[Dolibarr](https://github.com/Dolibarr/dolibarr) is an open-source ERP application. This portfolio documents my deployment, recovery, and infrastructure work; it does not claim authorship of the application.
