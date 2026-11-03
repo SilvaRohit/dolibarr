@@ -1,0 +1,39 @@
+vulnerabilities:
+  - id: CVE-2026-24765
+    paths: &metadata_path
+      - var/www/html/includes/webklex/php-imap/vendor/composer/installed.json
+    expired_at: 2026-11-17
+    statement: &reason >-
+      Lab exception: recorded package directories were not found under
+      /var/www/html in the built image. CI verifies the metadata hash and
+      checks for matching directories. Review before expiry.
+
+  - id: CVE-2025-64500
+    paths: *metadata_path
+    expired_at: 2026-11-17
+    statement: *reason
+
+  - id: CVE-2026-108082
+    paths: *metadata_path
+    expired_at: 2026-11-17
+    statement: *reason
+
+  - id: CVE-2026-109413
+    paths: *metadata_path
+    expired_at: 2026-11-17
+    statement: *reason
+
+  - id: CVE-2026-45133
+    paths: *metadata_path
+    expired_at: 2026-11-17
+    statement: *reason
+
+  - id: CVE-2026-45304
+    paths: *metadata_path
+    expired_at: 2026-11-17
+    statement: *reason
+
+  - id: CVE-2026-45305
+    paths: *metadata_path
+    expired_at: 2026-11-17
+    statement: *reason

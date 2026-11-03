@@ -69,7 +69,7 @@ jobs:
 
               echo "No matching package directories found under /var/www/html"
             '
-            
+
       - name: Scan image vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -87,6 +87,7 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          trivyignores: .github/security/dolibarr-trivy-exceptions.yaml
           exit-code: '1'
 
       - name: Sign in to Azure with OIDC
