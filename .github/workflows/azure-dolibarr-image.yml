@@ -44,6 +44,32 @@ jobs:
             dolibarr-tls:ci \
             -l /var/www/html/core/db/mysqli.class.php
 
+      - name: Verify Composer metadata investigation
+        run: |
+          docker run --rm \
+            --entrypoint /bin/sh \
+            dolibarr-tls:ci -ec '
+              metadata=/var/www/html/includes/webklex/php-imap/vendor/composer/installed.json
+
+              printf "%s  %s\n" \
+                "04bc338acc4d129dfe6e9e23c99f25ebbca164f8003df1d2d87d03bb102c5eae" \
+                "$metadata" | sha256sum -c -
+
+              matches=$(find -L /var/www/html -type d \( \
+                -path "*/phpunit/phpunit" -o \
+                -path "*/symfony/http-foundation" -o \
+                -path "*/symfony/yaml" \
+              \) -print)
+
+              if [ -n "$matches" ]; then
+                echo "Package directories found; review required:"
+                printf "%s\n" "$matches"
+                exit 1
+              fi
+
+              echo "No matching package directories found under /var/www/html"
+            '
+            
       - name: Scan image vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -62,7 +88,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
-          
+
       - name: Sign in to Azure with OIDC
         if: github.event_name == 'push' && github.ref == 'refs/heads/azure-terraform'
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
