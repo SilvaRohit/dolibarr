@@ -87,7 +87,7 @@ resource "azurerm_linux_web_app" "erp" {
     DOLI_DB_SSL       = "true"
 
     DOLI_INSTANCE_UNIQUE_ID             = var.dolibarr_instance_unique_id
-    DOLI_URL_ROOT                       = "https://dolibarr-application.azurewebsites.net"
+    DOLI_URL_ROOT                       = "https://erp.tecerotech.com"
     DOLI_INIT_DEMO                      = "0"
     WEBSITES_PORT                       = "80"
     WEBSITES_ENABLE_APP_SERVICE_STORAGE = "false"
