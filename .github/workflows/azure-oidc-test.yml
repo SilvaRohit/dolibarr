@@ -29,3 +29,13 @@ jobs:
         run: |
           az acr login --name dolibaracr2026 --output none
           echo "Registry login completed"
+
+      - name: Read App Service configuration
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          az rest \
+            --method get \
+            --url "https://management.azure.com/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/dolibarr-rg/providers/Microsoft.Web/sites/dolibarr-application/config/web?api-version=2025-03-01" \
+            --query "{Image:properties.linuxFxVersion, ACRManagedIdentity:properties.acrUseManagedIdentityCreds}" \
+            --output json
