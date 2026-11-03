@@ -1,0 +1,53 @@
+name: Azure Dolibarr Image CI
+
+on:
+  push:
+    branches:
+      - azure-terraform
+    paths:
+      - 'dolibarr-tls-image/**'
+      - '.github/workflows/azure-dolibarr-image.yml'
+  pull_request:
+    branches:
+      - azure-terraform
+    paths:
+      - 'dolibarr-tls-image/**'
+      - '.github/workflows/azure-dolibarr-image.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Build Dolibarr TLS image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --tag dolibarr-tls:ci \
+            ./dolibarr-tls-image
+
+      - name: Check patched PHP file
+        run: |
+          docker run --rm \
+            --entrypoint php \
+            dolibarr-tls:ci \
+            -l /var/www/html/core/db/mysqli.class.php
+
+      - name: Scan image vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: dolibarr-tls:ci
+          format: table
+          severity: HIGH,CRITICAL
+          exit-code: '0'
