@@ -72,3 +72,23 @@ jobs:
           docker push "$image"
 
           echo "Published image: $image"
+
+      - name: Deploy image to App Service
+        if: github.event_name == 'push' && github.ref == 'refs/heads/azure-terraform'
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          image="dolibaracr2026.azurecr.io/dolibarr-tls:sha-${GITHUB_SHA}"
+
+          config_url="https://management.azure.com/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/dolibarr-rg/providers/Microsoft.Web/sites/dolibarr-application/config/web?api-version=2025-03-01"
+
+          body=$(jq -n --arg image "DOCKER|${image}" \
+            '{properties: {linuxFxVersion: $image}}')
+
+          az rest \
+            --method patch \
+            --url "$config_url" \
+            --body "$body" \
+            --output none
+
+          echo "Requested App Service deployment: $image"
