@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   build-and-scan:
@@ -51,3 +52,23 @@ jobs:
           format: table
           severity: HIGH,CRITICAL
           exit-code: '0'
+
+      - name: Sign in to Azure with OIDC
+        if: github.event_name == 'push' && github.ref == 'refs/heads/azure-terraform'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Push tested image to ACR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/azure-terraform'
+        run: |
+          az acr login --name dolibaracr2026 --output none
+
+          image="dolibaracr2026.azurecr.io/dolibarr-tls:sha-${GITHUB_SHA}"
+
+          docker tag dolibarr-tls:ci "$image"
+          docker push "$image"
+
+          echo "Published image: $image"
