@@ -1,0 +1,18 @@
+
+# Terraform working directory and state
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+
+# Local variable and secret files
+*.tfvars
+*.tfvars.json
+.env
+.env.*
+*.pem
+*.key
+
+# Terraform crash logs
+crash.log
+crash.*.log
