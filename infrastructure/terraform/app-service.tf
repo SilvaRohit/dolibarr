@@ -42,7 +42,7 @@ resource "azurerm_linux_web_app" "erp" {
       docker_registry_url = "https://${azurerm_container_registry.erp.login_server}"
     }
 
-    ip_restriction_default_action     = "Deny"
+    ip_restriction_default_action     = "Allow"
     scm_use_main_ip_restriction       = false
     scm_ip_restriction_default_action = "Deny"
 
