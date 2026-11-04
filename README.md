@@ -1,74 +1,138 @@
-# Cloud ERP on Azure: Deployment, Recovery and Migration
+# Cloud ERP on Azure
 
-**Business-focused Azure portfolio project | Dolibarr ERP and document management**
+**A Terraform and DevSecOps portfolio project inspired by real ERP operations**
 
-I deployed an open-source ERP application on Azure, recovered its data after a database container was reinitialized, and migrated the application to a managed database and persistent document storage. The project brings together ERP administration, cloud infrastructure, troubleshooting, and recovery.
+I built a Dolibarr ERP lab on Azure to demonstrate how an enterprise application can be provisioned, connected to private data services, and delivered through a security-aware deployment pipeline. The project connects my ERP and systems administration experience with hands-on Azure, Terraform, Docker, and GitHub Actions work.
 
-> **Current status:** Working portfolio lab. The application, recovered users, and documents remained accessible after restart and removal of the old database container. Production availability and capacity for 200 concurrent users have not been validated.
+**[Technical deep-dive & runbook](doc/deployment-guide/Azure-Terraform-DevSecOps.md)** · **[Terraform](infrastructure/terraform)** · **[CI/CD workflow](.github/workflows/azure-dolibarr-image.yml)** · **[Example pipeline run](https://github.com/SilvaRohit/dolibarr/actions/runs/41671941720)**
 
-## Business context
+> **Status:** Working, IP-restricted portfolio lab. Application and document access were verified after deployment. Database initialization errors and image scan findings remain under investigation; recovery, high availability, and capacity for 200 concurrent users have not been validated.
 
-An ERP system supports day-to-day business processes by bringing records and documents together. Dolibarr provides functions for areas such as customers, products, quotations, invoices, and document management. This lab used Dolibarr to explore how an ERP service could be hosted and managed on Azure.
+## Why this project
 
-For a business, losing access to ERP records or supporting documents can interrupt operations. This project focuses on reducing a specific recovery risk: keeping business data tied to the lifecycle of an application container.
+ERP services support daily operations: users need access to business records and documents, while IT teams need a dependable way to manage the infrastructure and release application changes. I wanted to explore that operational problem with a recognizable ERP application and a realistic cloud delivery workflow.
 
-## The challenge and my response
-
-| Challenge | What I did | Business value |
-| --- | --- | --- |
-| ERP data was no longer visible after the initial database container was reinitialized. | Recovered an existing SQL backup and documents archive, and compared selected records during the migration. | Restored access to the available backed-up data. |
-| The database and documents initially depended on container-local storage. | Moved database records to Azure MySQL and documents to a mounted Azure Files share. | Data storage no longer relies on the original database sidecar or the application container's local filesystem. |
-| The ERP application needed a controlled database connection. | Configured private network connectivity, DNS resolution, and a custom image with certificate verification. | Reduced public database exposure and added server identity verification for the tested connection. |
-| Changes needed to survive an application restart. | Checked restored users and documents after restarts and removed the old MariaDB sidecar. | Demonstrated a more maintainable lab setup across the restart scenarios tested. |
-
-The new architecture improves this specific lab setup. It does not establish a production recovery objective or guarantee against data loss.
+The goal was to keep the database off a public endpoint, separate documents from the container filesystem, manage infrastructure changes through Terraform, and make image build, security review, and deployment visible in GitHub Actions.
 
 ## Solution overview
 
 ```mermaid
 flowchart TB
-    User[ERP user] -->|HTTPS| Web[Dolibarr on Azure App Service]
-    DNS[Cloudflare DNS] -.->|Domain resolution| Web
-    Registry[Azure Container Registry] -.->|Managed identity image pull| Web
-    Web -->|Persistent document mount| Files[Azure Files]
-    Web -->|VNet integration and private DNS| DB[Azure MySQL Flexible Server]
+    User[ERP user] -->|HTTPS| App[App Service with Dolibarr]
+    DNS[Cloudflare DNS] -.->|Custom domain| App
+    App -->|Persistent documents| Files[Azure Files]
+    App -->|Private network and TLS| DB[Azure MySQL Flexible Server]
+    Registry[Azure Container Registry] -.->|Managed identity pull| App
 ```
 
-The web application uses a custom domain and HTTPS. ERP records are stored in Azure MySQL, reached through private networking. Documents are mounted from Azure Files. The storage connection was configured separately; a storage private endpoint was not verified.
+**Application:** Dolibarr 24.0.2 runs as a custom Linux container on Azure App Service. Users access it through `erp.tecerotech.com`; inbound access is currently restricted to an administrative IP.
 
-### How the design evolved
+**Data:** App Service uses VNet integration and private DNS to reach Azure Database for MySQL Flexible Server. An Azure Files share is mounted at `/var/www/documents`. A storage private endpoint was not verified.
 
-The first lab placed a MariaDB database sidecar beside the application on App Service. Its database files had no persistent mount. Following the recovery, the application was switched to managed MySQL and the sidecar was removed.
+**Infrastructure:** Terraform defines the Azure resources. HCP Terraform stores state and runs reviewed plans against the `azure-terraform` branch.
 
-The original and migrated network designs, exact settings, troubleshooting, and verification steps are documented in the [technical deep-dive](doc/deployment-guide/Azure-ERP-deployment-guide.md).
+**Delivery:** GitHub Actions builds and scans the image, publishes a commit-tagged image to Azure Container Registry, and requests an App Service update. Separate workload identities are used for Terraform, GitHub Actions, and App Service image pulls.
 
-## Results
+## What I implemented
 
-- Recovered a database containing **410 tables**; selected record counts matched between the local recovery database and the Azure MySQL import.
-- Confirmed private DNS resolution and network connectivity from the application environment to the managed database.
-- Tested the modified database driver's TLS verification using a valid hostname, a mismatched IP, and an untrusted CA.
-- Verified recovered users and documents after App Service restart and removal of the old MariaDB sidecar.
-- Created new database and document archives and checked archive integrity. A restore test of these newer backups is still pending.
+| Challenge | Approach | Result in the lab |
+| --- | --- | --- |
+| ERP data services needed controlled connectivity | Separate delegated subnets, App Service VNet integration, private DNS, and private MySQL access | The app resolved the database to a private IP and connected over TLS. |
+| Documents needed to persist across container deployments | Mounted an Azure Files share into the container | Document-directory writes and document access were verified. |
+| Infrastructure needed a reviewable change process | Terraform configuration, HCP remote state, VCS-connected plans, and manual apply review | A post-deployment Terraform plan reported no infrastructure changes. |
+| Container releases needed security checks | Image build, PHP syntax check, Trivy report, and a fixable-vulnerability gate | A deployment was stopped by the gate; the findings were investigated and scoped exceptions documented. |
+| Deployment needed to avoid long-lived Azure client secrets | OIDC federation for HCP Terraform and GitHub Actions; managed identity for App Service registry pulls | The workflows authenticate to Azure using short-lived federated credentials. |
+| Users needed a business hostname | Cloudflare DNS and Terraform-managed App Service domain and HTTPS bindings | The ERP was accessible over its custom domain. |
 
-These checks demonstrate the scenarios tested in the lab; they are not proof of production availability or 200-user capacity.
+## How a change moves through the platform
 
-## Skills demonstrated
+```mermaid
+flowchart TB
+    IaC[Terraform configuration] --> HCP[HCP Terraform plan and review]
+    HCP --> Infra[Azure infrastructure]
+    Code[Dockerfile and workflow] --> Build[Build and check image]
+    Build --> Scan[Trivy scan and gate]
+    Scan -->|Qualifying branch push| Registry[Publish image to ACR]
+    Registry --> Deploy[Update App Service image]
+```
 
-**ERP and operations:** application recovery, user and document verification, backup awareness, and migration planning.
+Terraform manages the infrastructure; GitHub Actions manages the deployed image tag. A targeted Terraform lifecycle rule leaves that image attribute to the deployment workflow. I checked this handoff with a subsequent no-change plan.
 
-**Azure and security:** App Service, Azure Database for MySQL Flexible Server, Azure Files, VNet integration, Private DNS, Azure Container Registry, managed identity, HTTPS, and database TLS.
+The Dockerfile extends an official Dolibarr image and patches the MySQL driver to verify the server certificate. **It does not currently copy application source code from this fork into the image.** The workflow checks the image and patched PHP syntax; it is not a full application test suite.
 
-**Troubleshooting:** diagnosing container persistence, resolving a MariaDB-to-MySQL collation incompatibility, and checking configuration against the running application.
+## Identity and authentication flows
 
-## Next steps
+### HCP Terraform → Microsoft Entra ID → Azure
 
-- Test recovery from the latest backups and establish scheduled, independent document backups.
-- Review access, secret management, monitoring, alerting, and image updates.
-- Test real ERP workflows and MySQL collation behavior, then load-test representative users.
-- Design and cost a production architecture with appropriate availability and recovery targets.
+```mermaid
+sequenceDiagram
+    participant GH as GitHub
+    participant HCP as HCP Terraform
+    participant ID as Microsoft Entra ID
+    participant ARM as Azure Resource Manager
 
-## Technical documentation
+    GH->>HCP: Configuration change triggers a run
+    HCP->>HCP: Issue a workload identity token
+    HCP->>ID: Exchange the token for Azure access
+    ID->>ID: Validate the configured federated trust
+    ID-->>HCP: Short-lived Azure access token
+    HCP->>ARM: Read or manage resources with Azure RBAC
+```
 
-Read the [technical deep-dive](doc/deployment-guide/Azure-ERP-deployment-guide.md) for the two architecture diagrams, implementation sequence, configuration values, migration tests, and operational limitations.
+HCP Terraform initiates the Azure authentication. Entra ID trusts an HCP-issued token only when its issuer, audience, and exact workspace/run-phase subject match the configured credential. After authentication, Azure RBAC controls what the Terraform identity can do. The workspace uses separate trusted subjects for **plan** and **apply**. HCP stores the Terraform state; Azure does not initiate the HCP run.
 
-[Dolibarr](https://github.com/Dolibarr/dolibarr) is an open-source ERP application. This portfolio documents my deployment, recovery, and infrastructure work; it does not claim authorship of the application.
+### GitHub Actions → Microsoft Entra ID → Azure
+
+```mermaid
+sequenceDiagram
+    participant GH as GitHub OIDC
+    participant Job as Actions job
+    participant ID as Microsoft Entra ID
+    participant ACR as Container Registry
+    participant App as App Service
+
+    Job->>GH: Request a job identity token
+    GH-->>Job: Signed OIDC token
+    Job->>ID: Exchange token for Azure access
+    ID-->>Job: Short-lived Azure access token
+    Job->>ACR: Push scanned image using AcrPush
+    Job->>App: Request image update through Azure
+    App->>ID: Request access using managed identity
+    ID-->>App: Identity token for registry access
+    App->>ACR: Pull image using AcrPull
+```
+
+GitHub Actions initiates the deployment authentication; Azure validates the GitHub-issued token against a **separate** Entra application and federated credential. The workflow identity has registry push and web app management roles. App Service then uses its own user-assigned managed identity to pull the image—its pull identity is separate from the GitHub deployment identity.
+
+The [technical guide](doc/deployment-guide/Azure-Terraform-DevSecOps.md#identity-and-authentication-flows) explains the trust settings, role scopes, token flow, and troubleshooting in more detail.
+
+## Evidence and troubleshooting
+
+- **Network and database:** verified private DNS resolution, TCP connectivity, and a Dolibarr driver connection reporting an active TLS cipher.
+- **Storage and application:** verified document-directory writes and, after deployment, application login and document access.
+- **Delivery:** [a successful GitHub Actions run](https://github.com/SilvaRohit/dolibarr/actions/runs/41671941720) shows the image checks, security gate, ACR push, and App Service update request.
+- **Identity:** resolved a GitHub OIDC login failure caused by a tenant/subscription ID mismatch; the subsequent Azure login test passed.
+- **Database setup:** investigated MySQL-generated invisible primary keys conflicting with Dolibarr table initialization and managed the server setting with Terraform. The existing schema still requires investigation and correction.
+- **Security review:** investigated seven findings reported from Composer metadata whose package directories were not found in the checked image; documented temporary, path-scoped exceptions and added an image check.
+
+The technical guide explains the evidence and its limits, the implementation sequence, configuration ownership, operational checks, and troubleshooting.
+
+## Current boundaries and next steps
+
+This is a B1, single-instance learning environment with a burstable database—not a production-sized ERP platform. The fresh initialization logged SQL errors, including key and reference-data failures. Although the application works for the checks performed, **schema integrity is not yet established**.
+
+The full image scan reported **360 HIGH and 8 CRITICAL package findings** in the observed run. The gate ignores unfixed findings and uses seven scoped Composer exceptions expiring **17 November 2026**; a green pipeline is not a clean security assessment.
+
+Priorities are to resolve and retest database initialization, restore-test coordinated database and document backups, evaluate the outstanding image findings, add health checks and rollback, and demonstrate a clean rebuild and representative load test. Terraform state and local backups also require restricted access because sensitive values can be present in state.
+
+## Technology and skills
+
+**Azure:** App Service · MySQL Flexible Server · Azure Files · VNet integration · Private DNS · Container Registry · managed identity
+
+**Delivery and security:** Terraform · HCP Terraform · GitHub Actions · Docker · OIDC · Trivy · TLS · Cloudflare DNS
+
+**Operations:** ERP configuration · database connectivity · persistent documents · release troubleshooting · infrastructure review
+
+---
+
+Dolibarr is an [open-source ERP project](https://github.com/Dolibarr/dolibarr). This portfolio documents my Azure infrastructure, integration, deployment, and operational work; it does not claim authorship of the application.
